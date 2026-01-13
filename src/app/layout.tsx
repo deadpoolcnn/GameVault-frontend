@@ -1,0 +1,38 @@
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+import { Web3Provider } from "@/providers/web3-provider";
+import { ThemeProvider } from "@/providers/theme-provider";
+import { Header } from "@/components/header";
+import { Toaster } from "sonner";
+
+const inter = Inter({ subsets: ["latin"] });
+
+export const metadata: Metadata = {
+  title: "GameVault - NFT Marketplace",
+  description: "Trade gaming NFTs on the blockchain",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body className={inter.className}>
+        <ThemeProvider>
+          <Web3Provider>
+            <div className="min-h-screen bg-gradient-main">
+              <Header />
+              <main className="container mx-auto px-4 py-8">
+                {children}
+              </main>
+            </div>
+            <Toaster position="bottom-right" richColors />
+          </Web3Provider>
+        </ThemeProvider>
+      </body>
+    </html>
+  );
+}
