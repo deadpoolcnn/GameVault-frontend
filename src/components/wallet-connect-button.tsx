@@ -1,64 +1,95 @@
 "use client";
 
-import { useAccount, useConnect, useDisconnect } from "wagmi";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { Button } from "@/components/ui/button";
-import { Wallet, LogOut, ChevronDown } from "lucide-react";
-import { formatAddress } from "@/lib/utils";
-import { useState } from "react";
-import { cn } from "@/lib/utils";
+import { Wallet } from "lucide-react";
 
 export function WalletConnectButton() {
-  const { address, isConnected } = useAccount();
-  const { connect, connectors } = useConnect();
-  const { disconnect } = useDisconnect();
-  const [showConnectors, setShowConnectors] = useState(false);
-
-  if (isConnected && address) {
-    return (
-      <div className="flex items-center gap-2">
-        <div className="glass-card px-4 py-2 text-sm font-medium">
-          {formatAddress(address)}
-        </div>
-        <Button
-          variant="glass"
-          size="icon"
-          onClick={() => disconnect()}
-          className="hover-lift"
-        >
-          <LogOut className="h-4 w-4" />
-        </Button>
-      </div>
-    );
-  }
-
   return (
-    <div className="relative">
-      <Button
-        variant="glass"
-        onClick={() => setShowConnectors(!showConnectors)}
-        className="hover-lift gap-2"
-      >
-        <Wallet className="h-4 w-4" />
-        Connect Wallet
-        <ChevronDown className={cn("h-4 w-4 transition-transform", showConnectors && "rotate-180")} />
-      </Button>
-      
-      {showConnectors && (
-        <div className="absolute right-0 top-full mt-2 glass-card p-2 min-w-[200px] z-50">
-          {connectors.map((connector) => (
-            <button
-              key={connector.id}
-              onClick={() => {
-                connect({ connector });
-                setShowConnectors(false);
-              }}
-              className="w-full text-left px-4 py-2 rounded-lg hover:bg-white/10 transition-colors text-sm font-medium"
-            >
-              {connector.name}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <ConnectButton.Custom>
+      {({
+        account,
+        chain,
+        openAccountModal,
+        openChainModal,
+        openConnectModal,
+        authenticationStatus,
+        mounted,
+      }) => {
+        const ready = mounted && authenticationStatus !== "loading";
+        const connected =
+          ready &&
+          account &&
+          chain &&
+          (!authenticationStatus || authenticationStatus === "authenticated");
+
+        return (
+          <div
+            {...(!ready && {
+              "aria-hidden": true,
+              style: {
+                opacity: 0,
+                pointerEvents: "none",
+                userSelect: "none",
+              },
+            })}
+          >
+            {(() => {
+              if (!connected) {
+                return (
+                  <Button
+                    variant="glass"
+                    onClick={openConnectModal}
+                    className="hover-lift gap-2"
+                  >
+                    <Wallet className="h-4 w-4" />
+                    Connect Wallet
+                  </Button>
+                );
+              }
+
+              if (chain.unsupported) {
+                return (
+                  <Button
+                    variant="destructive"
+                    onClick={openChainModal}
+                    className="hover-lift"
+                  >
+                    Wrong network
+                  </Button>
+                );
+              }
+
+              return (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="glass"
+                    onClick={openChainModal}
+                    className="hover-lift"
+                  >
+                    {chain.hasIcon && chain.iconUrl && (
+                      <img
+                        alt={chain.name ?? "Chain icon"}
+                        src={chain.iconUrl}
+                        className="h-4 w-4"
+                      />
+                    )}
+                    {chain.name}
+                  </Button>
+
+                  <Button
+                    variant="glass"
+                    onClick={openAccountModal}
+                    className="hover-lift"
+                  >
+                    {account.displayName}
+                  </Button>
+                </div>
+              );
+            })()}
+          </div>
+        );
+      }}
+    </ConnectButton.Custom>
   );
 }

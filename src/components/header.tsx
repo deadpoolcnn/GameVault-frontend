@@ -6,15 +6,9 @@ import { WalletConnectButton } from "./wallet-connect-button";
 import { ThemeToggle } from "./theme-toggle";
 import { Gamepad2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState, useEffect } from "react";
 
 export function Header() {
   const pathname = usePathname();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const navItems = [
     { href: "/", label: "Market" },
@@ -55,7 +49,7 @@ export function Header() {
 
           {/* Actions */}
           <div className="flex items-center gap-3">
-            {mounted && <ThemeToggle />}
+            <ThemeToggle />
             <WalletConnectButton />
           </div>
         </div>
