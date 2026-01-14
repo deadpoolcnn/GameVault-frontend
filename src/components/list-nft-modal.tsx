@@ -63,10 +63,10 @@ export function ListNFTModal({
       console.log("✅ Listing successful!");
       toast.success("NFT listed successfully! 🎉");
       
-      // Optimistic update
-      optimisticAddListing(tokenId, parsePrice(price));
+      // Optimistic update with user address
+      optimisticAddListing(tokenId, parsePrice(price), address);
       
-      // Call success callback
+      // Call success callback immediately
       if (onSuccess) {
         onSuccess();
       }
@@ -74,7 +74,7 @@ export function ListNFTModal({
       onClose();
       setPrice("");
     }
-  }, [isSuccess, needsApproval, tokenId, price, optimisticAddListing, onSuccess, onClose]);
+  }, [isSuccess, needsApproval, tokenId, price, address, optimisticAddListing, onSuccess, onClose]);
 
   const handleListNFT = async () => {
     if (!price || parseFloat(price) <= 0) {

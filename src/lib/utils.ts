@@ -21,9 +21,23 @@ export function parsePrice(price: string, decimals: number = 18): bigint {
 }
 
 export function resolveIPFS(uri: string): string {
+  if (!uri) return "";
+  
+  // 处理 ipfs:// 协议
   if (uri.startsWith("ipfs://")) {
     return uri.replace("ipfs://", "https://ipfs.io/ipfs/");
   }
+  
+  // 处理纯 IPFS hash（以 Qm 或 bafy 开头）
+  if (uri.match(/^(Qm[1-9A-HJ-NP-Za-km-z]{44}|bafy[a-zA-Z0-9]{50,})/)) {
+    return `https://ipfs.io/ipfs/${uri}`;
+  }
+  
+  // 已经是完整 URL
+  if (uri.startsWith("http://") || uri.startsWith("https://")) {
+    return uri;
+  }
+  
   return uri;
 }
 export function shortenAddress(address: string, chars = 4): string {

@@ -49,12 +49,6 @@ export function NFTDataProvider({ children }: { children: React.ReactNode }) {
 
   // 带缓存和超时的元数据获取
   const fetchMetadataWithCache = useCallback(async (tokenURI: string, tokenId: number): Promise<NFTMetadata> => {
-    // 检查缓存
-    if (metadataCache.current.has(tokenURI)) {
-      console.log(`📦 Using cached metadata for token ${tokenId}`);
-      return metadataCache.current.get(tokenURI)!;
-    }
-
     const defaultMetadata: NFTMetadata = {
       name: `Game Item #${tokenId}`,
       description: "NFT Game Item",
@@ -62,9 +56,16 @@ export function NFTDataProvider({ children }: { children: React.ReactNode }) {
     };
 
     if (!tokenURI) return defaultMetadata;
+    
+    // 检查缓存
+    if (metadataCache.current.has(tokenURI)) {
+      console.log(`📦 Using cached metadata for token ${tokenId}`);
+      return metadataCache.current.get(tokenURI)!;
+    }
 
     try {
       const metadataUrl = resolveIPFS(tokenURI);
+      console.log(`🔍 Fetching metadata for token ${tokenId} from:`, metadataUrl);
       
       // 设置 3 秒超时
       const controller = new AbortController();
@@ -78,10 +79,30 @@ export function NFTDataProvider({ children }: { children: React.ReactNode }) {
       clearTimeout(timeoutId);
       
       if (metadataResponse.ok) {
+        const contentType = metadataResponse.headers.get('content-type');
+        
+        // 如果返回的是图片，直接作为image使用
+        if (contentType?.startsWith('image/')) {
+          console.log(`🖼️ Token ${tokenId} URI points directly to an image`);
+          const metadata: NFTMetadata = {
+            name: `Game Item #${tokenId}`,
+            description: "NFT Game Item",
+            image: metadataUrl,
+          };
+          metadataCache.current.set(tokenURI, metadata);
+          return metadata;
+        }
+        
+        // 否则解析JSON metadata
         const metadata = await metadataResponse.json();
+        console.log(`✅ Metadata fetched for token ${tokenId}:`, metadata);
+        
+        // 处理 image 字段
         if (metadata.image) {
           metadata.image = resolveIPFS(metadata.image);
+          console.log(`🖼️ Resolved image URL for token ${tokenId}:`, metadata.image);
         }
+        
         // 缓存成功的元数据
         metadataCache.current.set(tokenURI, metadata);
         return metadata;
@@ -90,7 +111,7 @@ export function NFTDataProvider({ children }: { children: React.ReactNode }) {
       if (e instanceof Error && e.name === 'AbortError') {
         console.log(`⏱️ Metadata fetch timeout for token ${tokenId}`);
       } else {
-        console.log(`❌ Failed to fetch metadata for token ${tokenId}`);
+        console.log(`❌ Failed to fetch metadata for token ${tokenId}`, e);
       }
     }
     
@@ -139,17 +160,28 @@ export function NFTDataProvider({ children }: { children: React.ReactNode }) {
   }, [publicClient]);
 
   // Refresh marketplace listings
-  const refreshMarketplace = useCallback(async (force: boolean = false) => {
+  const refreshMarketplace = useCallback(async (force: boolean = false, silent: boolean = false) => {
+    if (!publicClient) return;
+    
     const now = Date.now();
+    
+    // 检查缓存（除非force）
     if (!force && now - lastMarketplaceRefresh < CACHE_DURATION) {
       console.log("📦 Using cached marketplace data");
       return;
     }
 
-    if (!publicClient || isLoadingMarketplace) return;
+    // 检查loading状态（除非force）
+    if (!force && isLoadingMarketplace) {
+      console.log("⏳ Marketplace already loading, skipping...");
+      return;
+    }
 
-    setIsLoadingMarketplace(true);
-    console.log("🔄 Refreshing marketplace listings...");
+    // 非静默模式才设置loading状态
+    if (!silent) {
+      setIsLoadingMarketplace(true);
+    }
+    console.log("🔄 Refreshing marketplace listings..." + (force ? " (forced)" : "") + (silent ? " (silent)" : ""));
 
     try {
       const listingIds = await publicClient.readContract({
@@ -233,24 +265,36 @@ export function NFTDataProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error("Error refreshing marketplace:", error);
     } finally {
-      setIsLoadingMarketplace(false);
+      if (!silent) {
+        setIsLoadingMarketplace(false);
+      }
     }
-  }, [publicClient, isLoadingMarketplace, lastMarketplaceRefresh, fetchMetadataWithCache]);
+  }, [publicClient, lastMarketplaceRefresh, fetchMetadataWithCache]);
 
   // Refresh user NFTs
-  const refreshUserNFTs = useCallback(async (address: string, force: boolean = false) => {
+  const refreshUserNFTs = useCallback(async (address: string, force: boolean = false, silent: boolean = false) => {
+    if (!publicClient) return;
+    
     const now = Date.now();
     const lastRefresh = lastUserNFTsRefresh.get(address) || 0;
     
+    // 检查缓存（除非force）
     if (!force && now - lastRefresh < CACHE_DURATION) {
       console.log("📦 Using cached user NFTs data");
       return;
     }
 
-    if (!publicClient || isLoadingUserNFTs) return;
+    // 检查loading状态（除非force）
+    if (!force && isLoadingUserNFTs) {
+      console.log("⏳ User NFTs already loading, skipping...");
+      return;
+    }
 
-    setIsLoadingUserNFTs(true);
-    console.log(`🔄 Refreshing NFTs for ${address}...`);
+    // 非静默模式才设置loading状态
+    if (!silent) {
+      setIsLoadingUserNFTs(true);
+    }
+    console.log(`🔄 Refreshing NFTs for ${address}...` + (force ? " (forced)" : "") + (silent ? " (silent)" : ""));
 
     try {
       const totalSupply = await publicClient.readContract({
@@ -367,29 +411,87 @@ export function NFTDataProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error("Error refreshing user NFTs:", error);
     } finally {
-      setIsLoadingUserNFTs(false);
+      if (!silent) {
+        setIsLoadingUserNFTs(false);
+      }
     }
-  }, [publicClient, isLoadingUserNFTs, activeListings, lastUserNFTsRefresh, fetchMetadataWithCache]);
+  }, [publicClient, activeListings, lastUserNFTsRefresh, fetchMetadataWithCache]);
 
   // Optimistic updates
-  const optimisticAddListing = useCallback((tokenId: bigint, price: bigint) => {
-    console.log("⚡ Optimistic: Adding listing for token", tokenId.toString());
-    // Update active listings
-    setActiveListings(prev => {
-      const newMap = new Map(prev);
-      // We don't know the listingId yet, so we'll refresh soon
-      return newMap;
-    });
+  const optimisticAddListing = useCallback((tokenId: bigint, price: bigint, userAddress?: string) => {
+    console.log("⚡ Optimistic: Adding listing for token", tokenId.toString(), "price:", price.toString());
     
-    // Schedule a refresh after a short delay
+    // 立即更新用户NFT列表中的isListed状态
+    if (userAddress) {
+      setUserNFTs(prev => {
+        const newMap = new Map(prev);
+        const userNFTList = newMap.get(userAddress.toLowerCase());
+        
+        if (userNFTList) {
+          const updatedList = userNFTList.map(nft => {
+            if (nft.tokenId === tokenId) {
+              console.log("✅ Found NFT to update, setting isActive=true");
+              return {
+                ...nft,
+                isActive: true,
+                price: price,
+              };
+            }
+            return nft;
+          });
+          newMap.set(userAddress.toLowerCase(), updatedList);
+        }
+        
+        return newMap;
+      });
+    }
+    
+    // 后台静默刷新确保最终一致性（不显示loading）
     setTimeout(() => {
-      refreshMarketplace(true);
+      refreshMarketplace(true, true);
       refreshActiveListings();
-    }, 2000);
-  }, [refreshMarketplace, refreshActiveListings]);
+      if (userAddress) {
+        refreshUserNFTs(userAddress.toLowerCase(), true, true);
+      }
+    }, 3000);
+  }, [refreshMarketplace, refreshActiveListings, refreshUserNFTs]);
 
-  const optimisticRemoveListing = useCallback((listingId: bigint) => {
+  const optimisticRemoveListing = useCallback((listingId: bigint, userAddress?: string) => {
     console.log("⚡ Optimistic: Removing listing", listingId.toString());
+    
+    // 找到这个listing对应的tokenId
+    let removedTokenId: bigint | null = null;
+    for (const [tokenId, lId] of activeListings.entries()) {
+      if (lId === listingId) {
+        removedTokenId = BigInt(tokenId);
+        break;
+      }
+    }
+    
+    // 立即更新用户NFT列表中的isListed状态
+    if (userAddress && removedTokenId !== null) {
+      setUserNFTs(prev => {
+        const newMap = new Map(prev);
+        const userNFTList = newMap.get(userAddress.toLowerCase());
+        
+        if (userNFTList) {
+          const updatedList = userNFTList.map(nft => {
+            if (nft.tokenId === removedTokenId) {
+              console.log("✅ Found NFT to update, setting isActive=false");
+              return {
+                ...nft,
+                isActive: false,
+                listingId: BigInt(0),
+              };
+            }
+            return nft;
+          });
+          newMap.set(userAddress.toLowerCase(), updatedList);
+        }
+        
+        return newMap;
+      });
+    }
     
     // Remove from marketplace
     setMarketplaceListings(prev => 
@@ -408,13 +510,17 @@ export function NFTDataProvider({ children }: { children: React.ReactNode }) {
       return newMap;
     });
     
-    // Schedule a refresh
+    // 后台静默刷新确保最终一致性
     setTimeout(() => {
+      refreshMarketplace(true, true);
       refreshActiveListings();
-    }, 2000);
-  }, [refreshActiveListings]);
+      if (userAddress) {
+        refreshUserNFTs(userAddress.toLowerCase(), true, true);
+      }
+    }, 3000);
+  }, [activeListings, refreshMarketplace, refreshActiveListings, refreshUserNFTs]);
 
-  const optimisticUpdateOwner = useCallback((tokenId: bigint, newOwner: string) => {
+  const optimisticUpdateOwner = useCallback((tokenId: bigint, newOwner: string, oldOwner?: string) => {
     console.log("⚡ Optimistic: Updating owner for token", tokenId.toString(), "to", newOwner);
     
     // Remove from marketplace (item was purchased)

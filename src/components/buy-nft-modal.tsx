@@ -42,9 +42,9 @@ export function BuyNFTModal({
   const handleBuy = async () => {
     if (!address) return;
     
-    // Optimistic update
-    optimisticRemoveListing(listingId);
-    optimisticUpdateOwner(tokenId, address);
+    // Optimistic update with seller address
+    optimisticRemoveListing(listingId, seller);
+    optimisticUpdateOwner(tokenId, address, seller);
     
     // Execute transaction
     await buyNFT(listingId, price);

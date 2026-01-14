@@ -25,6 +25,7 @@ export default function MyNFTsPage() {
     userNFTs,
     isLoadingUserNFTs,
     refreshUserNFTs,
+    refreshMarketplace,
     activeListings,
     optimisticRemoveListing
   } = useNFTData();
@@ -55,18 +56,11 @@ export default function MyNFTsPage() {
     }
     console.log(`🗑️ Canceling listing ${listingId} for token ${tokenId}`);
     
-    // Optimistic update
-    optimisticRemoveListing(listingId);
+    // Optimistic update with user address
+    optimisticRemoveListing(listingId, address);
     
     // Execute transaction
     await cancelListing(listingId);
-    
-    // Refresh after transaction
-    if (address) {
-      setTimeout(() => {
-        refreshUserNFTs(address.toLowerCase());
-      }, 3000);
-    }
   };
 
   const handleRefresh = () => {
@@ -75,13 +69,10 @@ export default function MyNFTsPage() {
     }
   };
 
-  const handleListSuccess = () => {
-    // Refresh data after listing
-    if (address) {
-      setTimeout(() => {
-        refreshUserNFTs(address.toLowerCase());
-      }, 3000);
-    }
+  const handleListSuccess = async () => {
+    // 乐观更新已经在list-nft-modal中完成，这里只需要静默刷新确保最终一致性
+    // 不需要轮询，后台会自动同步
+    console.log("✅ List success callback triggered, optimistic update already applied");
   };
 
   // Not connected state

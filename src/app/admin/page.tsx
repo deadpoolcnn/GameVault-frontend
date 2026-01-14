@@ -14,6 +14,10 @@ export default function AdminPage() {
   const { address, isConnected } = useAccount();
   const [tokenURI, setTokenURI] = useState("");
   const [mintTo, setMintTo] = useState("");
+  const [nftName, setNftName] = useState("");
+  const [nftDescription, setNftDescription] = useState("");
+  const [nftImage, setNftImage] = useState("");
+  const [nftCategory, setNftCategory] = useState<"MOBA" | "RPG" | "FPS" | "CARD">("RPG");
   
   const { writeContract, data: hash, isPending, error: writeError } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
@@ -24,6 +28,10 @@ export default function AdminPage() {
       toast.success("NFT minted successfully! 🎉");
       setTokenURI("");
       setMintTo("");
+      setNftName("");
+      setNftDescription("");
+      setNftImage("");
+      setNftCategory("RPG");
     }
   }, [isSuccess]);
 
@@ -35,14 +43,7 @@ export default function AdminPage() {
     }
   }, [writeError]);
 
-  const handleMint = async (itemName?: string) => {
-    console.log("handleMint called with:", { tokenURI, address, mintTo, itemName });
-    
-    if (!tokenURI) {
-      toast.error("Please enter a token URI");
-      return;
-    }
-
+  const handleMint = async (itemName?: string, useCustomMetadata = false) => {
     const recipient = mintTo || address;
     if (!recipient) {
       toast.error("No recipient address");
@@ -50,22 +51,47 @@ export default function AdminPage() {
     }
 
     try {
+      let finalTokenURI = tokenURI;
+      let finalItemName = itemName || nftName;
+      
+      // 如果使用自定义metadata（从表单），创建metadata JSON
+      if (useCustomMetadata && nftName && nftImage) {
+        const metadata = {
+          name: nftName,
+          description: nftDescription || "NFT Game Item",
+          image: nftImage,
+          category: nftCategory,
+          attributes: [
+            { trait_type: "Category", value: nftCategory },
+            { trait_type: "Rarity", value: "Epic" },
+            { trait_type: "Type", value: "Game Item" }
+          ]
+        };
+        
+        // 创建data URI
+        finalTokenURI = `data:application/json;base64,${btoa(JSON.stringify(metadata))}`;
+        console.log("Created metadata URI:", finalTokenURI);
+      } else if (!finalTokenURI) {
+        toast.error("Please enter metadata or provide a token URI");
+        return;
+      }
+
       // Using mintItem function with to, uri, itemName, category, rarity
-      const name = itemName || "Game Item #" + Date.now();
+      const name = finalItemName || "Game Item #" + Date.now();
       const category = 2; // GameCategory enum: 0=Weapon, 1=Armor, 2=Accessory
       const rarity = BigInt(3); // Rarity: 1=Common, 2=Rare, 3=Epic, 4=Legendary
       
       console.log("Calling writeContract with:", {
         address: CONTRACTS.GAME_ITEM,
         functionName: "mintItem",
-        args: [recipient, tokenURI, name, category, rarity.toString()],
+        args: [recipient, finalTokenURI, name, category, rarity.toString()],
       });
       
       writeContract({
         address: CONTRACTS.GAME_ITEM,
         abi: GAME_ITEM_ABI,
         functionName: "mintItem",
-        args: [recipient as `0x${string}`, tokenURI, name, category, rarity],
+        args: [recipient as `0x${string}`, finalTokenURI, name, category, rarity],
       });
       
       toast.info("Preparing transaction...");
@@ -168,9 +194,99 @@ export default function AdminPage() {
           </div>
         </Card>
 
-        {/* Custom Mint Form */}
+        {/* Custom Mint Form with Metadata Editor */}
         <Card className="p-6 space-y-4">
           <h2 className="text-xl font-bold">Mint Custom NFT</h2>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                NFT Name *
+              </label>
+              <Input
+                placeholder="e.g., Epic Sword"
+                value={nftName}
+                onChange={(e) => setNftName(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Description
+              </label>
+              <Input
+                placeholder="Describe your NFT..."
+                value={nftDescription}
+                onChange={(e) => setNftDescription(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Image URL *
+              </label>
+              <Input
+                placeholder="ipfs://... or https://..."
+                value={nftImage}
+                onChange={(e) => setNftImage(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Supports IPFS URIs (ipfs://...) or direct URLs
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Category
+              </label>
+              <div className="grid grid-cols-4 gap-2">
+                {(["MOBA", "RPG", "FPS", "CARD"] as const).map((cat) => (
+                  <Button
+                    key={cat}
+                    type="button"
+                    variant={nftCategory === cat ? "default" : "outline"}
+                    onClick={() => setNftCategory(cat)}
+                    className="w-full"
+                  >
+                    {cat}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Mint to Address (optional)
+              </label>
+              <Input
+                placeholder="0x... (defaults to your address)"
+                value={mintTo}
+                onChange={(e) => setMintTo(e.target.value)}
+              />
+            </div>
+
+            <Button
+              onClick={() => handleMint(undefined, true)}
+              disabled={isPending || isConfirming || !nftName || !nftImage}
+              className="w-full"
+            >
+              {isPending ? "Waiting for approval..." : isConfirming ? "Confirming..." : "Mint NFT"}
+            </Button>
+
+            {hash && (
+              <div className="text-sm text-muted-foreground">
+                Transaction: {hash.slice(0, 10)}...{hash.slice(-8)}
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {/* Advanced: Direct Token URI */}
+        <Card className="p-6 space-y-4">
+          <h2 className="text-xl font-bold">Advanced: Direct Token URI</h2>
+          <p className="text-sm text-muted-foreground">
+            If you already have a metadata JSON URI (from IPFS or other sources), paste it here
+          </p>
           
           <div className="space-y-4">
             <div>
@@ -184,30 +300,14 @@ export default function AdminPage() {
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Mint to Address (optional, defaults to your address)
-              </label>
-              <Input
-                placeholder="0x..."
-                value={mintTo}
-                onChange={(e) => setMintTo(e.target.value)}
-              />
-            </div>
-
             <Button
-              onClick={handleMint}
+              onClick={() => handleMint()}
               disabled={isPending || isConfirming || !tokenURI}
               className="w-full"
+              variant="outline"
             >
-              {isPending ? "Waiting for approval..." : isConfirming ? "Confirming..." : "Mint NFT"}
+              {isPending ? "Waiting for approval..." : isConfirming ? "Confirming..." : "Mint with URI"}
             </Button>
-
-            {hash && (
-              <div className="text-sm text-muted-foreground">
-                Transaction: {hash.slice(0, 10)}...{hash.slice(-8)}
-              </div>
-            )}
           </div>
         </Card>
 
