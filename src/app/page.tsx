@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { NFTGrid, NFTGridSkeleton } from "@/components/nft-grid";
 import { BuyNFTModal } from "@/components/buy-nft-modal";
+import { TransactionHistory } from "@/components/transaction-history";
+import { CategoryFilter, GameCategory } from "@/components/category-filter";
 import { useNFTData } from "@/providers/nft-data-provider";
 import { Listing } from "@/types/nft";
 import { Store, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function HomePage() {
+  const [selectedCategory, setSelectedCategory] = useState<GameCategory>("ALL");
   const [buyModal, setBuyModal] = useState<{
     isOpen: boolean;
     listingId: bigint;
@@ -33,6 +36,16 @@ export default function HomePage() {
   useEffect(() => {
     refreshMarketplace();
   }, []);
+
+  // 根据分类筛选NFT
+  const filteredListings = useMemo(() => {
+    if (selectedCategory === "ALL") {
+      return marketplaceListings;
+    }
+    return marketplaceListings.filter(
+      listing => listing.nft?.metadata.category === selectedCategory
+    );
+  }, [marketplaceListings, selectedCategory]);
 
   const handleBuy = (listing: Listing) => {
     setBuyModal({
@@ -66,10 +79,26 @@ export default function HomePage() {
         </p>
       </div>
 
+      {/* Live Activity */}
+      <TransactionHistory />
+
+      {/* Category Filter */}
+      <CategoryFilter 
+        selected={selectedCategory}
+        onChange={setSelectedCategory}
+      />
+
       {/* Listings Grid */}
       <div>
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">Available NFTs</h2>
+          <h2 className="text-2xl font-bold">
+            {selectedCategory === "ALL" 
+              ? "Available NFTs" 
+              : `${selectedCategory} Games`}
+            <span className="ml-2 text-sm text-muted-foreground font-normal">
+              ({filteredListings.length})
+            </span>
+          </h2>
           <Button
             variant="outline"
             size="sm"
@@ -84,9 +113,13 @@ export default function HomePage() {
           <NFTGridSkeleton count={6} />
         ) : (
           <NFTGrid
-            listings={marketplaceListings}
+            listings={filteredListings}
             onBuy={handleBuy}
-            emptyMessage="No NFTs listed yet. Be the first to list!"
+            emptyMessage={
+              selectedCategory === "ALL"
+                ? "No NFTs listed yet. Be the first to list!"
+                : `No ${selectedCategory} games listed yet.`
+            }
           />
         )}
       </div>

@@ -2,6 +2,7 @@ export interface NFTMetadata {
   name: string;
   description: string;
   image: string;
+  category?: "MOBA" | "RPG" | "FPS" | "CARD";
   attributes?: Array<{
     trait_type: string;
     value: string | number;
