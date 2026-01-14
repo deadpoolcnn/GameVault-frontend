@@ -1,0 +1,25 @@
+<svg width="400" height="100" viewBox="0 0 400 100" xmlns="http://www.w3.org/2000/svg">
+  <!-- Game文字 with 渐变 -->
+  <defs>
+    <linearGradient id="redGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8B0000"/>
+      <stop offset="50%" stop-color="#FF4500"/>
+      <stop offset="100%" stop-color="#FF0000"/>
+    </linearGradient>
+    <!-- 抽象线条阴影 -->
+    <linearGradient id="lineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FF0000" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#8B0000" stop-opacity="0.3"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- 抽象动态线条，从G延伸 -->
+  <path d="M 50 20 Q 80 10 120 30 Q 150 50 180 30 T 250 40 Q 280 50 320 40" fill="none" stroke="url(#lineGrad)" stroke-width="3" stroke-linecap="round"/>
+  
+  <!-- GameVault 文字，粗体风格近似 -->
+  <text x="50" y="65" font-family="Arial Black, sans-serif" font-size="48" font-weight="900" fill="url(#redGrad)" stroke="#660000" stroke-width="1">Game</text>
+  <text x="190" y="65" font-family="Arial Black, sans-serif" font-size="48" font-weight="900" fill="url(#redGrad)" stroke="#660000" stroke-width="1">Vault</text>
+  
+  <!-- 细微线条增强连接 -->
+  <path d="M 140 40 L 160 55 M 300 45 L 350 60" fill="none" stroke="#FF4500" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
+</svg>

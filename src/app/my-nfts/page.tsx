@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAccount } from "wagmi";
+import { useAccount, useReadContract, useReadContracts } from "wagmi";
 import { NFTGrid, NFTGridSkeleton } from "@/components/nft-grid";
 import { ListNFTModal } from "@/components/list-nft-modal";
 import { useMarketplace, useNFTBalance } from "@/hooks/use-marketplace";
-import { Listing } from "@/types/nft";
+import { Listing, NFT, NFTMetadata } from "@/types/nft";
 import { Wallet, AlertCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { CONTRACTS } from "@/lib/constants";
+import { GAME_ITEM_ABI, MARKETPLACE_ABI } from "@/contracts/abis";
+import { resolveIPFS } from "@/lib/utils";
 
 export default function MyNFTsPage() {
   const { address, isConnected } = useAccount();
@@ -24,23 +26,163 @@ export default function MyNFTsPage() {
 
   const { balance } = useNFTBalance(address);
   const { cancelListing } = useMarketplace();
+  
+  // Get total supply to know how many NFTs exist
+  const { data: totalSupply } = useReadContract({
+    address: CONTRACTS.GAME_ITEM,
+    abi: GAME_ITEM_ABI,
+    functionName: "totalSupply",
+  });
 
   // Fetch user's NFTs
   useEffect(() => {
     async function fetchMyNFTs() {
-      if (!address || !balance) {
+      if (!address || !totalSupply || totalSupply === BigInt(0)) {
         setIsLoading(false);
+        setMyNFTs([]);
         return;
       }
 
+      setIsLoading(true);
+      console.log("Fetching NFTs for", address, "total supply:", totalSupply.toString());
+
       try {
-        // In production, you'd enumerate through the user's tokens
-        // For now, this is a placeholder
         const nfts: Listing[] = [];
+        const total = Number(totalSupply);
+        console.log(`Checking ${total} tokens (IDs 1 to ${total})`);
         
-        // Example: If user has tokens, create placeholder listings
-        // You'd need to implement actual token enumeration based on your contract
+        // Check each tokenId to see if user owns it
+        // Note: tokenId starts from 1, not 0
+        for (let i = 1; i <= total; i++) {
+          console.log(`Checking token ${i}...`);
+          try {
+            // Use wagmi to read owner directly from contract
+            const ownerResult = await fetch(`https://sepolia-rollup.arbitrum.io/rpc`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: i,
+                method: 'eth_call',
+                params: [{
+                  to: CONTRACTS.GAME_ITEM,
+                  data: `0x6352211e${i.toString(16).padStart(64, '0')}` // ownerOf(tokenId)
+                }, 'latest']
+              })
+            });
+
+            const ownerData = await ownerResult.json();
+            console.log(`Token ${i} owner response:`, ownerData);
+            
+            if (!ownerData.result || ownerData.result === '0x') {
+              console.log(`Token ${i} has no owner or invalid result`);
+              continue;
+            }
+
+            const owner = '0x' + ownerData.result.slice(-40);
+            console.log(`Token ${i} owner: ${owner}, user: ${address}`);
+            
+            if (owner.toLowerCase() !== address.toLowerCase()) {
+              console.log(`Token ${i} not owned by user`);
+              continue;
+            }
+
+            console.log(`Token ${i} is owned by user`);
+
+            // Get token URI
+            const uriResult = await fetch(`https://sepolia-rollup.arbitrum.io/rpc`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: `uri-${i}`,
+                method: 'eth_call',
+                params: [{
+                  to: CONTRACTS.GAME_ITEM,
+                  data: `0xc87b56dd${i.toString(16).padStart(64, '0')}` // tokenURI(tokenId)
+                }, 'latest']
+              })
+            });
+
+            const uriData = await uriResult.json();
+            let uri = "";
+            
+            if (uriData.result && uriData.result !== '0x') {
+              try {
+                // Decode ABI-encoded string
+                const hexString = uriData.result.slice(2);
+                
+                // ABI encoding: first 32 bytes = offset, next 32 bytes = length, then data
+                const offset = parseInt(hexString.slice(0, 64), 16);
+                const length = parseInt(hexString.slice(64, 128), 16);
+                const dataStart = 128;
+                const dataEnd = dataStart + (length * 2);
+                const uriHex = hexString.slice(dataStart, dataEnd);
+                
+                if (uriHex) {
+                  uri = Buffer.from(uriHex, 'hex').toString('utf8');
+                  console.log(`Token ${i} URI decoded:`, uri);
+                }
+              } catch (decodeError) {
+                console.error(`Failed to decode URI for token ${i}:`, decodeError);
+                // Try simple decode as fallback
+                try {
+                  const hexString = uriData.result.slice(2);
+                  const decoded = Buffer.from(hexString, 'hex').toString('utf8');
+                  const match = decoded.match(/(https?:\/\/[^\s\0]+|ipfs:\/\/[^\s\0]+|data:application\/json[^\0]*)/);
+                  if (match) {
+                    uri = match[0];
+                    console.log(`Token ${i} URI fallback:`, uri);
+                  }
+                } catch (e) {
+                  console.error(`Fallback decode also failed for token ${i}`);
+                }
+              }
+            }
+
+            console.log(`Token ${i} URI:`, uri);
+
+            // Fetch metadata
+            let metadata: NFTMetadata = {
+              name: `Game Item #${i}`,
+              description: "NFT Game Item",
+              image: "",
+            };
+
+            if (uri) {
+              try {
+                const metadataUrl = resolveIPFS(uri);
+                const metadataResponse = await fetch(metadataUrl);
+                if (metadataResponse.ok) {
+                  metadata = await metadataResponse.json();
+                  if (metadata.image) {
+                    metadata.image = resolveIPFS(metadata.image);
+                  }
+                }
+              } catch (e) {
+                console.log("Failed to fetch metadata for token", i, e);
+              }
+            }
+
+            nfts.push({
+              tokenId: BigInt(i),
+              seller: address,
+              price: BigInt(0),
+              isActive: false,
+              nft: {
+                id: BigInt(i),
+                owner: address,
+                tokenURI: uri,
+                metadata,
+              },
+            });
+          } catch (error) {
+            console.error(`Error fetching token ${i}:`, error);
+            // Don't skip - continue to next token
+          }
+        }
         
+        console.log(`Finished checking all tokens. Found ${nfts.length} NFTs owned by user`);
         setMyNFTs(nfts);
       } catch (error) {
         console.error("Error fetching NFTs:", error);
@@ -50,7 +192,7 @@ export default function MyNFTsPage() {
     }
 
     fetchMyNFTs();
-  }, [address, balance]);
+  }, [address, totalSupply]);
 
   const handleList = (tokenId: bigint) => {
     const nft = myNFTs.find((n) => n.tokenId === tokenId);

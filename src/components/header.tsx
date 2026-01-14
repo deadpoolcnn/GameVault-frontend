@@ -13,6 +13,7 @@ export function Header() {
   const navItems = [
     { href: "/", label: "Market" },
     { href: "/my-nfts", label: "My NFTs" },
+    { href: "/admin", label: "Admin" },
   ];
 
   return (
@@ -21,12 +22,9 @@ export function Header() {
         <div className="flex items-center justify-between">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 hover-lift">
-            <div className="neu-card p-2">
-              <Gamepad2 className="h-6 w-6 text-primary" />
+            <div className="p-1">
+              <img src="/gameVault.svg" alt="GameVault Logo" className="h-14 w-18" />
             </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-              GameVault
-            </span>
           </Link>
 
           {/* Navigation */}
