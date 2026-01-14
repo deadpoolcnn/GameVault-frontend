@@ -37,6 +37,7 @@ export default function MyNFTsPage() {
     if (address) {
       refreshUserNFTs(address.toLowerCase());
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address]);
 
   const handleList = (tokenId: bigint) => {
@@ -120,7 +121,7 @@ export default function MyNFTsPage() {
           </div>
           <h3 className="text-xl font-semibold">No NFTs Found</h3>
           <p className="text-muted-foreground text-center max-w-md">
-            You don't own any NFTs yet. Visit the marketplace to buy some!
+            You don&apos;t own any NFTs yet. Visit the marketplace to buy some!
           </p>
         </div>
       ) : (
