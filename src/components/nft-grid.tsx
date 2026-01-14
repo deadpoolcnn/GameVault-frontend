@@ -3,14 +3,16 @@
 import { NFTCard } from "./nft-card";
 import { Listing } from "@/types/nft";
 import { Loader2 } from "lucide-react";
+import { useAccount } from "wagmi";
 
 interface NFTGridProps {
   listings: Listing[];
   isLoading?: boolean;
-  onBuy?: (tokenId: bigint, price: bigint) => void;
+  onBuy?: (listing: Listing) => void;
   onList?: (tokenId: bigint) => void;
   onCancel?: (tokenId: bigint) => void;
   emptyMessage?: string;
+  showOwnerActions?: boolean;
 }
 
 export function NFTGrid({
@@ -20,7 +22,10 @@ export function NFTGrid({
   onList,
   onCancel,
   emptyMessage = "No NFTs found",
+  showOwnerActions = false,
 }: NFTGridProps) {
+  const { address } = useAccount();
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -39,16 +44,26 @@ export function NFTGrid({
 
   return (
     <div className="swiss-grid">
-      {listings.map((listing) => (
-        <NFTCard
-          key={listing.tokenId.toString()}
-          listing={listing}
-          onBuy={onBuy}
-          onList={onList}
-          onCancel={onCancel}
-          isListed={listing.isActive}
-        />
-      ))}
+      {listings.map((listing) => {
+        const isOwned = address?.toLowerCase() === listing.nft?.owner.toLowerCase();
+        // For marketplace: use listingId (always unique)
+        // For my-nfts: use tokenId (unique per user's collection)
+        const key = listing.listingId && listing.listingId !== BigInt(0)
+          ? `listing-${listing.listingId.toString()}`
+          : `token-${listing.tokenId.toString()}`;
+        
+        return (
+          <NFTCard
+            key={key}
+            listing={listing}
+            onBuy={onBuy}
+            onList={onList}
+            onCancel={onCancel}
+            isOwned={showOwnerActions && isOwned}
+            isListed={listing.isActive}
+          />
+        );
+      })}
     </div>
   );
 }

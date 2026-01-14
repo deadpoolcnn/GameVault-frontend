@@ -10,7 +10,7 @@ import { useAccount } from "wagmi";
 
 interface NFTCardProps {
   listing: Listing;
-  onBuy?: (tokenId: bigint, price: bigint) => void;
+  onBuy?: (listing: Listing) => void;
   onList?: (tokenId: bigint) => void;
   onCancel?: (tokenId: bigint) => void;
   isOwned?: boolean;
@@ -27,6 +27,12 @@ export function NFTCard({
 }: NFTCardProps) {
   const { address } = useAccount();
   const isOwnListing = address?.toLowerCase() === listing.seller.toLowerCase();
+
+  const handleBuy = () => {
+    if (onBuy) {
+      onBuy(listing);
+    }
+  };
 
   return (
     <Card variant="neu" className="overflow-hidden hover-lift group">
@@ -75,7 +81,7 @@ export function NFTCard({
           <Button
             variant="default"
             className="flex-1"
-            onClick={() => onBuy(listing.tokenId, listing.price)}
+            onClick={handleBuy}
           >
             <ShoppingCart className="h-4 w-4 mr-2" />
             Buy Now

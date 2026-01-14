@@ -16,6 +16,7 @@ import { Loader2 } from "lucide-react";
 interface BuyNFTModalProps {
   isOpen: boolean;
   onClose: () => void;
+  listingId: bigint;
   tokenId: bigint;
   price: bigint;
   nftName?: string;
@@ -25,6 +26,7 @@ interface BuyNFTModalProps {
 export function BuyNFTModal({
   isOpen,
   onClose,
+  listingId,
   tokenId,
   price,
   nftName,
@@ -33,7 +35,7 @@ export function BuyNFTModal({
   const { buyNFT, isPending } = useMarketplace();
 
   const handleBuy = async () => {
-    await buyNFT(tokenId, price);
+    await buyNFT(listingId, price);
     onClose();
   };
 

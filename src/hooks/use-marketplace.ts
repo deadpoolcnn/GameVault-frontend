@@ -5,7 +5,7 @@ import { parsePrice } from "@/lib/utils";
 import { toast } from "sonner";
 
 export function useMarketplace() {
-  const { writeContract, data: hash, isPending } = useWriteContract();
+  const { writeContractAsync, data: hash, isPending } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
   // List NFT
@@ -13,69 +13,94 @@ export function useMarketplace() {
     try {
       const priceInWei = parsePrice(price);
       
-      writeContract({
-        address: CONTRACTS.MARKETPLACE,
-        abi: MARKETPLACE_ABI,
-        functionName: "listNFT",
-        args: [tokenId, priceInWei],
+      console.log("🚀 Calling writeContractAsync for listItem...");
+      console.log("📋 Parameters:", {
+        nftContract: CONTRACTS.GAME_ITEM,
+        tokenId: tokenId.toString(),
+        price: priceInWei.toString()
       });
       
+      const txHash = await writeContractAsync({
+        address: CONTRACTS.MARKETPLACE,
+        abi: MARKETPLACE_ABI,
+        functionName: "listItem",
+        args: [CONTRACTS.GAME_ITEM, tokenId, priceInWei],
+      });
+      
+      console.log("📝 Transaction sent:", txHash);
       toast.success("Listing NFT...");
     } catch (error) {
       console.error("Error listing NFT:", error);
       toast.error("Failed to list NFT");
+      throw error;
     }
   };
 
   // Buy NFT
-  const buyNFT = async (tokenId: bigint, price: bigint) => {
+  const buyNFT = async (listingId: bigint, price: bigint) => {
     try {
-      writeContract({
+      console.log("🚀 Calling writeContractAsync for buyItem...");
+      console.log("📋 Parameters:", {
+        listingId: listingId.toString(),
+        value: price.toString()
+      });
+      
+      const txHash = await writeContractAsync({
         address: CONTRACTS.MARKETPLACE,
         abi: MARKETPLACE_ABI,
-        functionName: "buyNFT",
-        args: [tokenId],
+        functionName: "buyItem",
+        args: [listingId],
         value: price,
       });
       
+      console.log("💰 Transaction sent:", txHash);
       toast.success("Purchasing NFT...");
     } catch (error) {
       console.error("Error buying NFT:", error);
       toast.error("Failed to purchase NFT");
+      throw error;
     }
   };
 
   // Cancel listing
-  const cancelListing = async (tokenId: bigint) => {
+  const cancelListing = async (listingId: bigint) => {
     try {
-      writeContract({
+      console.log("🚀 Calling writeContractAsync for cancelListing...");
+      console.log("📋 Parameters:", { listingId: listingId.toString() });
+      
+      const txHash = await writeContractAsync({
         address: CONTRACTS.MARKETPLACE,
         abi: MARKETPLACE_ABI,
         functionName: "cancelListing",
-        args: [tokenId],
+        args: [listingId],
       });
       
+      console.log("❌ Transaction sent:", txHash);
       toast.success("Canceling listing...");
     } catch (error) {
       console.error("Error canceling listing:", error);
       toast.error("Failed to cancel listing");
+      throw error;
     }
   };
 
   // Approve marketplace
   const approveMarketplace = async () => {
     try {
-      writeContract({
+      console.log("🚀 Calling writeContractAsync for approval...");
+      const txHash = await writeContractAsync({
         address: CONTRACTS.GAME_ITEM,
         abi: GAME_ITEM_ABI,
         functionName: "setApprovalForAll",
         args: [CONTRACTS.MARKETPLACE, true],
       });
       
+      console.log("🔐 Approval transaction sent:", txHash);
       toast.success("Approving marketplace...");
     } catch (error) {
       console.error("Error approving marketplace:", error);
       toast.error("Failed to approve marketplace");
+      throw error;
     }
   };
 
@@ -95,21 +120,23 @@ export function useGetListings() {
   const { data: tokenIds } = useReadContract({
     address: CONTRACTS.MARKETPLACE,
     abi: MARKETPLACE_ABI,
-    functionName: "getAllListings",
+    functionName: "getActiveListings",
   });
 
+  console.log("🔍 Active listings:", tokenIds);
   return { tokenIds: tokenIds as bigint[] | undefined };
 }
 
 // Hook to get a specific listing
-export function useGetListing(tokenId: bigint) {
+export function useGetListing(listingId: bigint) {
   const { data, isLoading } = useReadContract({
     address: CONTRACTS.MARKETPLACE,
     abi: MARKETPLACE_ABI,
     functionName: "getListing",
-    args: [tokenId],
+    args: [listingId],
   });
 
+  console.log(`🔍 useGetListing(${listingId}):`, data);
   return { listing: data, isLoading };
 }
 

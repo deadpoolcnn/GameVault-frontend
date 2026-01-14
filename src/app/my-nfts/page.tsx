@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAccount, useReadContract, useReadContracts } from "wagmi";
+import { useAccount, useReadContract, usePublicClient } from "wagmi";
 import { NFTGrid, NFTGridSkeleton } from "@/components/nft-grid";
 import { ListNFTModal } from "@/components/list-nft-modal";
-import { useMarketplace, useNFTBalance } from "@/hooks/use-marketplace";
+import { useMarketplace, useNFTBalance, useGetListings } from "@/hooks/use-marketplace";
 import { Listing, NFT, NFTMetadata } from "@/types/nft";
 import { Wallet, AlertCircle } from "lucide-react";
 import { CONTRACTS } from "@/lib/constants";
@@ -15,6 +15,8 @@ export default function MyNFTsPage() {
   const { address, isConnected } = useAccount();
   const [myNFTs, setMyNFTs] = useState<Listing[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeListedTokenIds, setActiveListedTokenIds] = useState<Set<string>>(new Set());
+  const [tokenIdToListingId, setTokenIdToListingId] = useState<Map<string, bigint>>(new Map());
   const [listModal, setListModal] = useState<{
     isOpen: boolean;
     tokenId: bigint;
@@ -26,6 +28,8 @@ export default function MyNFTsPage() {
 
   const { balance } = useNFTBalance(address);
   const { cancelListing } = useMarketplace();
+  const { tokenIds: listingIds } = useGetListings();
+  const publicClient = usePublicClient();
   
   // Get total supply to know how many NFTs exist
   const { data: totalSupply } = useReadContract({
@@ -33,6 +37,50 @@ export default function MyNFTsPage() {
     abi: GAME_ITEM_ABI,
     functionName: "totalSupply",
   });
+
+  // Check which tokenIds are already listed in the marketplace
+  useEffect(() => {
+    async function checkListedNFTs() {
+      if (!listingIds || listingIds.length === 0 || !publicClient) {
+        setActiveListedTokenIds(new Set());
+        setTokenIdToListingId(new Map());
+        return;
+      }
+
+      try {
+        const listedTokenIds = new Set<string>();
+        const mapping = new Map<string, bigint>();
+        
+        for (const listingId of listingIds) {
+          try {
+            const listingData = await publicClient.readContract({
+              address: CONTRACTS.MARKETPLACE,
+              abi: MARKETPLACE_ABI,
+              functionName: 'getListing',
+              args: [listingId],
+            }) as any;
+
+            if (listingData && listingData.active) {
+              const tokenIdStr = listingData.tokenId.toString();
+              listedTokenIds.add(tokenIdStr);
+              mapping.set(tokenIdStr, listingId);
+            }
+          } catch (error) {
+            console.error(`Error checking listing ${listingId}:`, error);
+          }
+        }
+
+        console.log("🔍 Already listed tokenIds:", Array.from(listedTokenIds));
+        console.log("🗺️ TokenId to ListingId mapping:", Array.from(mapping.entries()));
+        setActiveListedTokenIds(listedTokenIds);
+        setTokenIdToListingId(mapping);
+      } catch (error) {
+        console.error("Error checking listed NFTs:", error);
+      }
+    }
+
+    checkListedNFTs();
+  }, [listingIds, publicClient]);
 
   // Fetch user's NFTs
   useEffect(() => {
@@ -165,10 +213,11 @@ export default function MyNFTsPage() {
             }
 
             nfts.push({
+              listingId: tokenIdToListingId.get(i.toString()) || BigInt(0),
               tokenId: BigInt(i),
               seller: address,
               price: BigInt(0),
-              isActive: false,
+              isActive: activeListedTokenIds.has(i.toString()), // Check if already listed
               nft: {
                 id: BigInt(i),
                 owner: address,
@@ -192,7 +241,7 @@ export default function MyNFTsPage() {
     }
 
     fetchMyNFTs();
-  }, [address, totalSupply]);
+  }, [address, totalSupply, activeListedTokenIds, tokenIdToListingId]);
 
   const handleList = (tokenId: bigint) => {
     const nft = myNFTs.find((n) => n.tokenId === tokenId);
@@ -204,7 +253,13 @@ export default function MyNFTsPage() {
   };
 
   const handleCancel = async (tokenId: bigint) => {
-    await cancelListing(tokenId);
+    const listingId = tokenIdToListingId.get(tokenId.toString());
+    if (!listingId) {
+      console.error("No listing ID found for tokenId:", tokenId);
+      return;
+    }
+    console.log(`🗑️ Canceling listing ${listingId} for token ${tokenId}`);
+    await cancelListing(listingId);
   };
 
   // Not connected state
@@ -251,6 +306,7 @@ export default function MyNFTsPage() {
             listings={myNFTs}
             onList={handleList}
             onCancel={handleCancel}
+            showOwnerActions={true}
             emptyMessage="You don't own any NFTs yet"
           />
         )}

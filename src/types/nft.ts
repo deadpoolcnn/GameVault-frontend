@@ -16,6 +16,7 @@ export interface NFT {
 }
 
 export interface Listing {
+  listingId: bigint;
   tokenId: bigint;
   seller: string;
   price: bigint;

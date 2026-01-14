@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { useMarketplace, useIsApproved } from "@/hooks/use-marketplace";
 import { useAccount } from "wagmi";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 interface ListNFTModalProps {
   isOpen: boolean;
@@ -29,23 +30,74 @@ export function ListNFTModal({
   nftName,
 }: ListNFTModalProps) {
   const [price, setPrice] = useState("");
+  const [needsApproval, setNeedsApproval] = useState(false);
   const { address } = useAccount();
   const { isApproved } = useIsApproved(address);
-  const { listNFT, approveMarketplace, isPending } = useMarketplace();
+  const { listNFT, approveMarketplace, isPending, isSuccess } = useMarketplace();
 
-  const handleList = async () => {
+  // Update approval status
+  useEffect(() => {
+    setNeedsApproval(!isApproved);
+  }, [isApproved]);
+
+  // Handle successful approval - automatically list NFT
+  useEffect(() => {
+    if (isSuccess && needsApproval && price) {
+      console.log("✅ Approval successful, now listing NFT...");
+      setNeedsApproval(false);
+      // Wait a bit for the blockchain state to update
+      setTimeout(() => {
+        handleListNFT();
+      }, 1000);
+    }
+  }, [isSuccess, needsApproval, price]);
+
+  // Handle successful listing
+  useEffect(() => {
+    if (isSuccess && !needsApproval && price) {
+      console.log("✅ Listing successful!");
+      toast.success("NFT listed successfully! 🎉");
+      onClose();
+      setPrice("");
+    }
+  }, [isSuccess, needsApproval]);
+
+  const handleListNFT = async () => {
     if (!price || parseFloat(price) <= 0) {
+      toast.error("Please enter a valid price");
       return;
     }
 
-    if (!isApproved) {
+    try {
+      console.log("📝 Listing NFT", tokenId.toString(), "for", price, "ETH");
+      await listNFT(tokenId, price);
+    } catch (error) {
+      console.error("❌ Error in handleListNFT:", error);
+      toast.error("Failed to list NFT: " + (error as Error).message);
+    }
+  };
+
+  const handleApprove = async () => {
+    try {
+      console.log("🔐 Approving marketplace...");
       await approveMarketplace();
+    } catch (error) {
+      console.error("❌ Error in handleApprove:", error);
+      toast.error("Failed to approve: " + (error as Error).message);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!price || parseFloat(price) <= 0) {
+      toast.error("Please enter a valid price");
       return;
     }
 
-    await listNFT(tokenId, price);
-    onClose();
-    setPrice("");
+    if (needsApproval) {
+      await handleApprove();
+    } else {
+      await handleListNFT();
+    }
   };
 
   return (
@@ -75,9 +127,12 @@ export function ListNFTModal({
             />
           </div>
 
-          {!isApproved && (
-            <div className="glass-card p-3 text-sm text-muted-foreground">
-              You need to approve the marketplace contract first
+          {needsApproval && (
+            <div className="glass-card p-3 text-sm">
+              <p className="font-medium mb-1">⚠️ Approval Required</p>
+              <p className="text-muted-foreground text-xs">
+                You need to approve the marketplace contract first. This is a one-time action.
+              </p>
             </div>
           )}
         </div>
@@ -87,16 +142,16 @@ export function ListNFTModal({
             Cancel
           </Button>
           <Button
-            onClick={handleList}
+            onClick={handleSubmit}
             disabled={isPending || !price || parseFloat(price) <= 0}
           >
             {isPending ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                {isApproved ? "Listing..." : "Approving..."}
+                {needsApproval ? "Approving..." : "Listing..."}
               </>
             ) : (
-              <>{isApproved ? "List NFT" : "Approve & List"}</>
+              <>{needsApproval ? "Approve & List" : "List NFT"}</>
             )}
           </Button>
         </DialogFooter>

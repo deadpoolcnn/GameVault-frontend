@@ -6,8 +6,8 @@ import { BuyNFTModal } from "@/components/buy-nft-modal";
 import { useGetListings } from "@/hooks/use-marketplace";
 import { Listing, NFTMetadata } from "@/types/nft";
 import { CONTRACTS } from "@/lib/constants";
-import { useReadContract } from "wagmi";
-import { GAME_ITEM_ABI } from "@/contracts/abis";
+import { usePublicClient } from "wagmi";
+import { GAME_ITEM_ABI, MARKETPLACE_ABI } from "@/contracts/abis";
 import { resolveIPFS } from "@/lib/utils";
 import { Store } from "lucide-react";
 
@@ -16,40 +16,129 @@ export default function HomePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [buyModal, setBuyModal] = useState<{
     isOpen: boolean;
+    listingId: bigint;
     tokenId: bigint;
     price: bigint;
     nftName?: string;
     nftImage?: string;
   }>({
     isOpen: false,
+    listingId: BigInt(0),
     tokenId: BigInt(0),
     price: BigInt(0),
   });
 
-  const { tokenIds } = useGetListings();
+  const { tokenIds: listingIds } = useGetListings();
+  const publicClient = usePublicClient();
 
-  // Fetch listings data
+  // Fetch listings data using wagmi's publicClient
   useEffect(() => {
     async function fetchListings() {
-      if (!tokenIds || tokenIds.length === 0) {
+      if (!listingIds || listingIds.length === 0 || !publicClient) {
+        console.log("No listing IDs from marketplace or no publicClient");
+        setListings([]);
         setIsLoading(false);
         return;
       }
 
+      console.log("📋 Fetching marketplace listings for IDs:", listingIds);
+      setIsLoading(true);
+
       try {
         const listingsData: Listing[] = [];
 
-        for (const tokenId of tokenIds) {
-          // This is a simplified version - in production, you'd batch these calls
-          // or use a subgraph/indexer for better performance
-          listingsData.push({
-            tokenId,
-            seller: "0x0000000000000000000000000000000000000000", // Placeholder
-            price: BigInt(0), // Placeholder
-            isActive: true,
-          });
+        for (const listingId of listingIds) {
+          try {
+            console.log(`\n🔍 Fetching listing ${listingId} using publicClient...`);
+            
+            // Use wagmi's publicClient to read contract data - this handles ABI encoding correctly
+            const listingData = await publicClient.readContract({
+              address: CONTRACTS.MARKETPLACE,
+              abi: MARKETPLACE_ABI,
+              functionName: 'getListing',
+              args: [listingId],
+            }) as any;
+
+            console.log(`📦 Listing ${listingId} raw data:`, listingData);
+
+            // listingData is an object with named properties, not an array
+            if (!listingData) {
+              console.log(`❌ Invalid listing data for ${listingId}`);
+              continue;
+            }
+
+            const seller = listingData.seller;
+            const nftContract = listingData.nftContract;
+            const tokenId = listingData.tokenId;
+            const price = listingData.price;
+            const isActive = listingData.active;
+
+            console.log(`📋 Decoded listing ${listingId}:`, {
+              seller,
+              nftContract,
+              tokenId: tokenId.toString(),
+              price: price.toString(),
+              isActive
+            });
+
+            if (!isActive || price === BigInt(0)) {
+              console.log(`⚠️ Listing ${listingId} inactive or price 0`);
+              continue;
+            }
+
+            // Get token URI using publicClient
+            const tokenURI = await publicClient.readContract({
+              address: nftContract as `0x${string}`,
+              abi: GAME_ITEM_ABI,
+              functionName: 'tokenURI',
+              args: [tokenId],
+            }) as string;
+
+            console.log(`📝 Token URI for ${tokenId}:`, tokenURI);
+
+            // Fetch metadata
+            let metadata: NFTMetadata = {
+              name: `Game Item #${tokenId}`,
+              description: "NFT Game Item",
+              image: "",
+            };
+
+            if (tokenURI) {
+              try {
+                const metadataUrl = resolveIPFS(tokenURI);
+                const metadataResponse = await fetch(metadataUrl);
+                if (metadataResponse.ok) {
+                  metadata = await metadataResponse.json();
+                  if (metadata.image) {
+                    metadata.image = resolveIPFS(metadata.image);
+                  }
+                }
+              } catch (e) {
+                console.log("Failed to fetch metadata for token", tokenId);
+              }
+            }
+
+            listingsData.push({
+              listingId,
+              tokenId,
+              seller: seller as string,
+              price,
+              isActive: true,
+              nft: {
+                id: tokenId,
+                owner: seller as string,
+                tokenURI: tokenURI || "",
+                metadata,
+              },
+            });
+
+            console.log(`✅ Successfully loaded listing ${listingId}`);
+          } catch (error) {
+            console.error(`❌ Error fetching listing ${listingId}:`, error);
+          }
         }
 
+        console.log(`\n📊 Marketplace listings loaded: ${listingsData.length} items`, listingsData);
         setListings(listingsData);
       } catch (error) {
         console.error("Error fetching listings:", error);
@@ -59,14 +148,14 @@ export default function HomePage() {
     }
 
     fetchListings();
-  }, [tokenIds]);
+  }, [listingIds, publicClient]);
 
-  const handleBuy = (tokenId: bigint, price: bigint) => {
-    const listing = listings.find((l) => l.tokenId === tokenId);
+  const handleBuy = (listing: Listing) => {
     setBuyModal({
       isOpen: true,
-      tokenId,
-      price,
+      listingId: listing.listingId,
+      tokenId: listing.tokenId,
+      price: listing.price,
       nftName: listing?.nft?.metadata.name,
       nftImage: listing?.nft?.metadata.image,
     });
@@ -107,6 +196,7 @@ export default function HomePage() {
       <BuyNFTModal
         isOpen={buyModal.isOpen}
         onClose={() => setBuyModal({ ...buyModal, isOpen: false })}
+        listingId={buyModal.listingId}
         tokenId={buyModal.tokenId}
         price={buyModal.price}
         nftName={buyModal.nftName}
