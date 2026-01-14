@@ -316,10 +316,10 @@ export function NFTDataProvider({ children }: { children: React.ReactNode }) {
         const metadata = await fetchMetadataWithCache(tokenURI, tokenId);
         
         const listingId = activeListings.get(tokenId.toString()) || BigInt(0);
-        const isListed = activeListings.has(tokenId.toString());
-
-        // 如果已上架，获取真实价格
+        let isListed = activeListings.has(tokenId.toString());
         let price = BigInt(0);
+
+        // 如果activeListings中有记录，验证seller是否是当前用户
         if (isListed && listingId) {
           try {
             const listingData = await publicClient.readContract({
@@ -329,16 +329,23 @@ export function NFTDataProvider({ children }: { children: React.ReactNode }) {
               args: [listingId],
             }) as any;
             
-            if (listingData && listingData.active) {
+            // 验证：listing必须是active状态，且seller是当前用户
+            if (listingData && listingData.active && 
+                listingData.seller.toLowerCase() === address.toLowerCase()) {
               price = listingData.price;
+            } else {
+              // listing不属于当前用户（已被购买或取消），标记为未上架
+              isListed = false;
+              console.log(`Token ${tokenId} listing is not owned by current user`);
             }
           } catch (error) {
             console.error(`Error fetching listing price for token ${tokenId}:`, error);
+            isListed = false;
           }
         }
 
         return {
-          listingId,
+          listingId: isListed ? listingId : BigInt(0),
           tokenId: BigInt(tokenId),
           seller: address,
           price,
