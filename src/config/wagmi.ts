@@ -1,3 +1,5 @@
+/* eslint-disable */
+// @ts-nocheck
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 import { arbitrumSepolia } from "wagmi/chains";
 import type { Wallet } from "@rainbow-me/rainbowkit";

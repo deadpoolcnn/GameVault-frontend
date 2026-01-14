@@ -17,6 +17,7 @@ export default function HomePage() {
     listingId: bigint;
     tokenId: bigint;
     price: bigint;
+    seller?: string;
     nftName?: string;
     nftImage?: string;
   }>({
@@ -53,6 +54,7 @@ export default function HomePage() {
       listingId: listing.listingId,
       tokenId: listing.tokenId,
       price: listing.price,
+      seller: listing.seller,
       nftName: listing?.nft?.metadata.name,
       nftImage: listing?.nft?.metadata.image,
     });
@@ -131,6 +133,7 @@ export default function HomePage() {
         listingId={buyModal.listingId}
         tokenId={buyModal.tokenId}
         price={buyModal.price}
+        seller={buyModal.seller}
         nftName={buyModal.nftName}
         nftImage={buyModal.nftImage}
       />

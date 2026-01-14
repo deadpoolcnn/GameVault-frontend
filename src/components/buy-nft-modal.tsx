@@ -22,6 +22,7 @@ interface BuyNFTModalProps {
   listingId: bigint;
   tokenId: bigint;
   price: bigint;
+  seller?: string;
   nftName?: string;
   nftImage?: string;
 }
@@ -32,6 +33,7 @@ export function BuyNFTModal({
   listingId,
   tokenId,
   price,
+  seller,
   nftName,
   nftImage,
 }: BuyNFTModalProps) {

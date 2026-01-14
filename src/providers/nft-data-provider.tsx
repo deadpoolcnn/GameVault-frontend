@@ -23,9 +23,9 @@ interface NFTDataContextType {
   refreshActiveListings: () => Promise<void>;
   
   // Update functions for optimistic updates
-  optimisticAddListing: (tokenId: bigint, price: bigint) => void;
-  optimisticRemoveListing: (listingId: bigint) => void;
-  optimisticUpdateOwner: (tokenId: bigint, newOwner: string) => void;
+  optimisticAddListing: (tokenId: bigint, price: bigint, userAddress?: string) => void;
+  optimisticRemoveListing: (listingId: bigint, userAddress?: string) => void;
+  optimisticUpdateOwner: (tokenId: bigint, newOwner: string, oldOwner?: string) => void;
 }
 
 const NFTDataContext = createContext<NFTDataContextType | undefined>(undefined);
