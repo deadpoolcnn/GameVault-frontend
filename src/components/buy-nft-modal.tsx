@@ -10,8 +10,11 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useMarketplace } from "@/hooks/use-marketplace";
+import { useNFTData } from "@/providers/nft-data-provider";
 import { formatPrice } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
+import { useAccount } from "wagmi";
+import { toast } from "sonner";
 
 interface BuyNFTModalProps {
   isOpen: boolean;
@@ -32,10 +35,21 @@ export function BuyNFTModal({
   nftName,
   nftImage,
 }: BuyNFTModalProps) {
+  const { address } = useAccount();
   const { buyNFT, isPending } = useMarketplace();
+  const { optimisticUpdateOwner, optimisticRemoveListing } = useNFTData();
 
   const handleBuy = async () => {
+    if (!address) return;
+    
+    // Optimistic update
+    optimisticRemoveListing(listingId);
+    optimisticUpdateOwner(tokenId, address);
+    
+    // Execute transaction
     await buyNFT(listingId, price);
+    toast.success("NFT purchased successfully! 🎉");
+    
     onClose();
   };
 

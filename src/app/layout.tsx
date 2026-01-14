@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Web3Provider } from "@/providers/web3-provider";
 import { ThemeProvider } from "@/providers/theme-provider";
+import { NFTDataProvider } from "@/providers/nft-data-provider";
 import { Header } from "@/components/header";
 import { Toaster } from "sonner";
 
@@ -23,13 +24,15 @@ export default function RootLayout({
       <body className={inter.className}>
         <ThemeProvider>
           <Web3Provider>
-            <div className="min-h-screen bg-gradient-main">
-              <Header />
-              <main className="container mx-auto px-4 py-8">
-                {children}
-              </main>
-            </div>
-            <Toaster position="bottom-right" richColors />
+            <NFTDataProvider>
+              <div className="min-h-screen bg-gradient-main">
+                <Header />
+                <main className="container mx-auto px-4 py-8">
+                  {children}
+                </main>
+              </div>
+              <Toaster position="bottom-right" richColors />
+            </NFTDataProvider>
           </Web3Provider>
         </ThemeProvider>
       </body>

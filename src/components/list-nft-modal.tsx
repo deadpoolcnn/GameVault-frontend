@@ -12,6 +12,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useMarketplace, useIsApproved } from "@/hooks/use-marketplace";
+import { useNFTData } from "@/providers/nft-data-provider";
+import { parsePrice } from "@/lib/utils";
 import { useAccount } from "wagmi";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -21,6 +23,7 @@ interface ListNFTModalProps {
   onClose: () => void;
   tokenId: bigint;
   nftName?: string;
+  onSuccess?: () => void;
 }
 
 export function ListNFTModal({
@@ -28,12 +31,14 @@ export function ListNFTModal({
   onClose,
   tokenId,
   nftName,
+  onSuccess,
 }: ListNFTModalProps) {
   const [price, setPrice] = useState("");
   const [needsApproval, setNeedsApproval] = useState(false);
   const { address } = useAccount();
   const { isApproved } = useIsApproved(address);
   const { listNFT, approveMarketplace, isPending, isSuccess } = useMarketplace();
+  const { optimisticAddListing } = useNFTData();
 
   // Update approval status
   useEffect(() => {
@@ -57,10 +62,19 @@ export function ListNFTModal({
     if (isSuccess && !needsApproval && price) {
       console.log("✅ Listing successful!");
       toast.success("NFT listed successfully! 🎉");
+      
+      // Optimistic update
+      optimisticAddListing(tokenId, parsePrice(price));
+      
+      // Call success callback
+      if (onSuccess) {
+        onSuccess();
+      }
+      
       onClose();
       setPrice("");
     }
-  }, [isSuccess, needsApproval]);
+  }, [isSuccess, needsApproval, tokenId, price, optimisticAddListing, onSuccess, onClose]);
 
   const handleListNFT = async () => {
     if (!price || parseFloat(price) <= 0) {
