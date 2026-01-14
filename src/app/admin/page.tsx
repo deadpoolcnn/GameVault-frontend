@@ -316,8 +316,8 @@ export default function AdminPage() {
           <h2 className="text-xl font-bold">Next Steps</h2>
           <ol className="list-decimal list-inside space-y-2 text-sm">
             <li>Mint some NFTs using the buttons above</li>
-            <li>Go to "My NFTs" page to see your minted NFTs</li>
-            <li>Click "List for Sale" to put them on the marketplace</li>
+            <li>Go to &quot;My NFTs&quot; page to see your minted NFTs</li>
+            <li>Click &quot;List for Sale&quot; to put them on the marketplace</li>
             <li>Your NFTs will appear on the home page for others to buy</li>
           </ol>
         </Card>

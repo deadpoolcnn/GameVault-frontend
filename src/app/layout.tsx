@@ -12,6 +12,9 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "GameVault - NFT Marketplace",
   description: "Trade gaming NFTs on the blockchain",
+  icons: {
+    icon: '/placeholder-nft.png',
+  },
 };
 
 export default function RootLayout({
