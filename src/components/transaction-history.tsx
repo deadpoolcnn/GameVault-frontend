@@ -25,13 +25,49 @@ interface Transaction {
 }
 
 export function TransactionHistory() {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>(() => {
+    // 从localStorage加载永久保存的交易历史
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem('transaction-history-permanent');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          // 将BigInt字符串转换回BigInt
+          return parsed.map((tx: any) => ({
+            ...tx,
+            listingId: tx.listingId ? BigInt(tx.listingId) : undefined,
+            tokenId: BigInt(tx.tokenId),
+            price: tx.price ? BigInt(tx.price) : undefined,
+            blockNumber: BigInt(tx.blockNumber),
+          }));
+        } catch (e) {
+          console.error('Failed to parse cached transactions:', e);
+        }
+      }
+    }
+    return [];
+  });
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastScannedBlock, setLastScannedBlock] = useState<bigint>(() => {
+    // 加载上次扫描的区块号
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('last-scanned-block');
+      if (saved) {
+        try {
+          return BigInt(saved);
+        } catch (e) {
+          console.error('Failed to parse last scanned block:', e);
+        }
+      }
+    }
+    return BigInt(0);
+  });
   const publicClient = usePublicClient();
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 获取历史交易
-  const fetchTransactions = async () => {
+  // 获取历史交易（增量扫描模式）
+  const fetchTransactions = async (forceFullScan: boolean = false) => {
     if (!publicClient) return;
 
     setIsLoading(true);
@@ -40,12 +76,29 @@ export function TransactionHistory() {
     try {
       // 获取当前区块
       const currentBlock = await publicClient.getBlockNumber();
-      // 获取最近100000个区块的事件（约1-2周的交易）
-      const fromBlock = currentBlock > BigInt(100000) ? currentBlock - BigInt(100000) : BigInt(0);
       
-      console.log(`📊 Scanning blocks ${fromBlock.toString()} to ${currentBlock.toString()}`);
+      let fromBlock: bigint;
+      
+      if (forceFullScan || lastScannedBlock === BigInt(0)) {
+        // 首次加载或强制全扫描：扫描最近500000个区块
+        fromBlock = currentBlock > BigInt(500000) ? currentBlock - BigInt(500000) : BigInt(0);
+        console.log(`📊 Full scan: blocks ${fromBlock.toString()} to ${currentBlock.toString()}`);
+      } else {
+        // 增量扫描：只扫描新区块
+        fromBlock = lastScannedBlock + BigInt(1);
+        console.log(`📊 Incremental scan: blocks ${fromBlock.toString()} to ${currentBlock.toString()}`);
+      }
+      
+      // 如果没有新区块，直接返回
+      if (fromBlock > currentBlock) {
+        console.log("✅ Already up to date, no new blocks to scan");
+        setIsLoading(false);
+        return;
+      }
+      
+      console.log(`📊 Scanning approximately ${(Number(currentBlock - fromBlock) / 1000).toFixed(1)}k blocks`);
 
-      const allTransactions: Transaction[] = [];
+      const newTransactions: Transaction[] = [];
 
       // 使用parseAbiItem来正确解析事件
       const itemListedEvent = {
@@ -118,7 +171,7 @@ export function TransactionHistory() {
             // 使用默认名称
           }
           
-          allTransactions.push({
+          newTransactions.push({
             id: `listed-${log.transactionHash}-${log.logIndex}`,
             type: "listed",
             listingId: log.args.listingId!,
@@ -185,7 +238,7 @@ export function TransactionHistory() {
             console.error("Error fetching NFT name for sold item:", e);
           }
           
-          allTransactions.push({
+          newTransactions.push({
             id: `sold-${log.transactionHash}-${log.logIndex}`,
             type: "purchased",
             listingId: log.args.listingId!,
@@ -253,7 +306,7 @@ export function TransactionHistory() {
             console.error("Error fetching NFT name for cancelled item:", e);
           }
           
-          allTransactions.push({
+          newTransactions.push({
             id: `cancelled-${log.transactionHash}-${log.logIndex}`,
             type: "cancelled",
             listingId: log.args.listingId!,
@@ -269,11 +322,40 @@ export function TransactionHistory() {
         }
       }
 
+      console.log(`✅ Found ${newTransactions.length} new transactions`);
+      
+      // 合并新旧交易，去重（使用id作为唯一标识）
+      const existingIds = new Set(transactions.map(tx => tx.id));
+      const uniqueNewTransactions = newTransactions.filter(tx => !existingIds.has(tx.id));
+      
+      const allTransactions = [...transactions, ...uniqueNewTransactions];
+      
       // 按时间戳倒序排序（最新的在前面）
       allTransactions.sort((a, b) => b.timestamp - a.timestamp);
 
       setTransactions(allTransactions);
-      console.log(`✅ Fetched ${allTransactions.length} transactions`);
+      setLastScannedBlock(currentBlock);
+      setError(null);
+      console.log(`✅ Total transactions: ${allTransactions.length} (${uniqueNewTransactions.length} new)`);
+      
+      // 永久保存到localStorage（将BigInt转换为字符串）
+      if (typeof window !== 'undefined') {
+        try {
+          const toCache = allTransactions.map(tx => ({
+            ...tx,
+            listingId: tx.listingId?.toString(),
+            tokenId: tx.tokenId.toString(),
+            price: tx.price?.toString(),
+            blockNumber: tx.blockNumber.toString(),
+          }));
+          localStorage.setItem('transaction-history-permanent', JSON.stringify(toCache));
+          localStorage.setItem('last-scanned-block', currentBlock.toString());
+          localStorage.setItem('transaction-history-timestamp', Date.now().toString());
+          console.log(`💾 Saved ${allTransactions.length} transactions to permanent storage`);
+        } catch (e) {
+          console.error('Failed to save transactions:', e);
+        }
+      }
 
       // 滚动到顶部显示最新交易
       setTimeout(() => {
@@ -283,14 +365,27 @@ export function TransactionHistory() {
       }, 100);
     } catch (error) {
       console.error("Error fetching transactions:", error);
+      setError(error instanceof Error ? error.message : 'Failed to load transactions');
     } finally {
       setIsLoading(false);
     }
   };
 
+  // 清除缓存并重新全量扫描
+  const resetAndRescan = async () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('transaction-history-permanent');
+      localStorage.removeItem('last-scanned-block');
+      localStorage.removeItem('transaction-history-timestamp');
+    }
+    setTransactions([]);
+    setLastScannedBlock(BigInt(0));
+    await fetchTransactions(true);
+  };
+
   // 初始加载
   useEffect(() => {
-    fetchTransactions();
+    fetchTransactions(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [publicClient]);
 
@@ -319,22 +414,46 @@ export function TransactionHistory() {
   return (
     <Card variant="neu">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <TrendingUp className="h-5 w-5" />
-          Transaction History
-          <span className="ml-auto text-xs font-normal text-muted-foreground">
-            {transactions.length} transactions
+        <CardTitle className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5" />
+            Transaction History
+          </div>
+          <span className="text-xs font-normal text-muted-foreground">
+            {transactions.length} transactions stored
           </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={fetchTransactions}
-            disabled={isLoading}
-            className="ml-2"
-          >
-            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-          </Button>
+          <div className="ml-auto flex gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => fetchTransactions(false)}
+              disabled={isLoading}
+              title="Fetch new transactions"
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={resetAndRescan}
+              disabled={isLoading}
+              title="Clear cache and rescan"
+              className="text-xs"
+            >
+              Reset
+            </Button>
+          </div>
         </CardTitle>
+        {error && (
+          <div className="text-xs text-red-500 mt-2 p-2 bg-red-500/10 rounded">
+            ⚠️ {error}
+          </div>
+        )}
+        {lastScannedBlock > BigInt(0) && (
+          <div className="text-xs text-muted-foreground mt-2">
+            📍 Last scanned block: {lastScannedBlock.toString()}
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         {isLoading && transactions.length === 0 ? (
@@ -440,8 +559,24 @@ export function TransactionHistory() {
             </div>
           </div>
         )}
-        <div className="text-xs text-muted-foreground text-center mt-4 pt-4 border-t">
-          Auto-refreshes every 10 minutes
+        <div className="text-xs text-muted-foreground text-center mt-4 pt-4 border-t space-y-1">
+          <div>💾 All transactions are permanently stored locally</div>
+          <div>🔄 New transactions are automatically fetched incrementally</div>
+          <div>Auto-refreshes every 10 minutes • Click "Reset" to clear cache and rescan</div>
+          {typeof window !== 'undefined' && (() => {
+            const cachedTime = localStorage.getItem('transaction-history-timestamp');
+            if (cachedTime) {
+              const diff = Date.now() - parseInt(cachedTime);
+              const minutes = Math.floor(diff / 60000);
+              if (minutes < 60) {
+                return <div className="text-xs">Last updated: {minutes} minute{minutes !== 1 ? 's' : ''} ago</div>;
+              } else {
+                const hours = Math.floor(diff / 3600000);
+                return <div className="text-xs">Last updated: {hours} hour{hours !== 1 ? 's' : ''} ago</div>;
+              }
+            }
+            return null;
+          })()}
         </div>
       </CardContent>
     </Card>
