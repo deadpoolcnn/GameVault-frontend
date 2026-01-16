@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/providers/theme-provider";
 import { NFTDataProvider } from "@/providers/nft-data-provider";
 import { Header } from "@/components/header";
 import { Toaster } from "sonner";
+import { Analytics } from "@vercel/analytics/next"
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -39,6 +40,7 @@ export default function RootLayout({
           </Web3Provider>
         </ThemeProvider>
       </body>
+      <Analytics />
     </html>
   );
 }
