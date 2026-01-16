@@ -564,7 +564,7 @@ export function TransactionHistory() {
         <div className="text-xs text-muted-foreground text-center mt-4 pt-4 border-t space-y-1">
           <div>💾 All transactions are permanently stored locally</div>
           <div>🔄 New transactions are automatically fetched incrementally</div>
-          <div>Auto-refreshes every 10 minutes • Click "Reset" to clear cache and rescan</div>
+          <div>Auto-refreshes every 10 minutes • Click &quot;Reset&quot; to clear cache and rescan</div>
           {mounted && (() => {
             const cachedTime = localStorage.getItem('transaction-history-timestamp');
             if (cachedTime) {
