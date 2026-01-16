@@ -25,46 +25,47 @@ interface Transaction {
 }
 
 export function TransactionHistory() {
-  const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    // 从localStorage加载永久保存的交易历史
-    if (typeof window !== 'undefined') {
-      const cached = localStorage.getItem('transaction-history-permanent');
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          // 将BigInt字符串转换回BigInt
-          return parsed.map((tx: any) => ({
-            ...tx,
-            listingId: tx.listingId ? BigInt(tx.listingId) : undefined,
-            tokenId: BigInt(tx.tokenId),
-            price: tx.price ? BigInt(tx.price) : undefined,
-            blockNumber: BigInt(tx.blockNumber),
-          }));
-        } catch (e) {
-          console.error('Failed to parse cached transactions:', e);
-        }
-      }
-    }
-    return [];
-  });
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastScannedBlock, setLastScannedBlock] = useState<bigint>(() => {
-    // 加载上次扫描的区块号
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('last-scanned-block');
-      if (saved) {
-        try {
-          return BigInt(saved);
-        } catch (e) {
-          console.error('Failed to parse last scanned block:', e);
-        }
-      }
-    }
-    return BigInt(0);
-  });
+  const [lastScannedBlock, setLastScannedBlock] = useState<bigint>(BigInt(0));
+  const [mounted, setMounted] = useState(false);
   const publicClient = usePublicClient();
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // 在客户端加载缓存的数据
+  useEffect(() => {
+    setMounted(true);
+    
+    // 从localStorage加载永久保存的交易历史
+    const cached = localStorage.getItem('transaction-history-permanent');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        // 将BigInt字符串转换回BigInt
+        const cachedTransactions = parsed.map((tx: any) => ({
+          ...tx,
+          listingId: tx.listingId ? BigInt(tx.listingId) : undefined,
+          tokenId: BigInt(tx.tokenId),
+          price: tx.price ? BigInt(tx.price) : undefined,
+          blockNumber: BigInt(tx.blockNumber),
+        }));
+        setTransactions(cachedTransactions);
+      } catch (e) {
+        console.error('Failed to parse cached transactions:', e);
+      }
+    }
+    
+    // 加载上次扫描的区块号
+    const saved = localStorage.getItem('last-scanned-block');
+    if (saved) {
+      try {
+        setLastScannedBlock(BigInt(saved));
+      } catch (e) {
+        console.error('Failed to parse last scanned block:', e);
+      }
+    }
+  }, []);
 
   // 获取历史交易（增量扫描模式）
   const fetchTransactions = async (forceFullScan: boolean = false) => {
@@ -339,22 +340,20 @@ export function TransactionHistory() {
       console.log(`✅ Total transactions: ${allTransactions.length} (${uniqueNewTransactions.length} new)`);
       
       // 永久保存到localStorage（将BigInt转换为字符串）
-      if (typeof window !== 'undefined') {
-        try {
-          const toCache = allTransactions.map(tx => ({
-            ...tx,
-            listingId: tx.listingId?.toString(),
-            tokenId: tx.tokenId.toString(),
-            price: tx.price?.toString(),
-            blockNumber: tx.blockNumber.toString(),
-          }));
-          localStorage.setItem('transaction-history-permanent', JSON.stringify(toCache));
-          localStorage.setItem('last-scanned-block', currentBlock.toString());
-          localStorage.setItem('transaction-history-timestamp', Date.now().toString());
-          console.log(`💾 Saved ${allTransactions.length} transactions to permanent storage`);
-        } catch (e) {
-          console.error('Failed to save transactions:', e);
-        }
+      try {
+        const toCache = allTransactions.map(tx => ({
+          ...tx,
+          listingId: tx.listingId?.toString(),
+          tokenId: tx.tokenId.toString(),
+          price: tx.price?.toString(),
+          blockNumber: tx.blockNumber.toString(),
+        }));
+        localStorage.setItem('transaction-history-permanent', JSON.stringify(toCache));
+        localStorage.setItem('last-scanned-block', currentBlock.toString());
+        localStorage.setItem('transaction-history-timestamp', Date.now().toString());
+        console.log(`💾 Saved ${allTransactions.length} transactions to permanent storage`);
+      } catch (e) {
+        console.error('Failed to save transactions:', e);
       }
 
       // 滚动到顶部显示最新交易
@@ -373,32 +372,35 @@ export function TransactionHistory() {
 
   // 清除缓存并重新全量扫描
   const resetAndRescan = async () => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('transaction-history-permanent');
-      localStorage.removeItem('last-scanned-block');
-      localStorage.removeItem('transaction-history-timestamp');
-    }
+    localStorage.removeItem('transaction-history-permanent');
+    localStorage.removeItem('last-scanned-block');
+    localStorage.removeItem('transaction-history-timestamp');
     setTransactions([]);
     setLastScannedBlock(BigInt(0));
     await fetchTransactions(true);
   };
 
-  // 初始加载
+  // 初始加载 - 只在客户端挂载后且有 publicClient 时执行
   useEffect(() => {
-    fetchTransactions(false);
+    if (mounted && publicClient) {
+      // 如果有缓存数据，不强制全扫描；如果没有，则全扫描
+      fetchTransactions(transactions.length === 0 && lastScannedBlock === BigInt(0));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [publicClient]);
+  }, [mounted, publicClient]);
 
   // 每10分钟自动刷新
   useEffect(() => {
+    if (!mounted || !publicClient) return;
+    
     const interval = setInterval(() => {
       console.log("⏰ Auto-refreshing transaction history...");
-      fetchTransactions();
+      fetchTransactions(false);
     }, 10 * 60 * 1000); // 10分钟
 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [publicClient]);
+  }, [mounted, publicClient]);
 
   const getTypeLabel = (type: Transaction["type"]) => {
     switch (type) {
@@ -563,7 +565,7 @@ export function TransactionHistory() {
           <div>💾 All transactions are permanently stored locally</div>
           <div>🔄 New transactions are automatically fetched incrementally</div>
           <div>Auto-refreshes every 10 minutes • Click "Reset" to clear cache and rescan</div>
-          {typeof window !== 'undefined' && (() => {
+          {mounted && (() => {
             const cachedTime = localStorage.getItem('transaction-history-timestamp');
             if (cachedTime) {
               const diff = Date.now() - parseInt(cachedTime);
